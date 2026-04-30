@@ -1,0 +1,3 @@
+from SurvivEHR.examples.modelling.SurvivEHR.setup_finetune_experiment import FineTuneExperiment
+model = FineTuneExperiment.load_from_checkpoint('/Users/p.cardoso/Library/CloudStorage/OneDrive-UniversityofExeter/Documents/Data Analysis/Deep-learning_EHR/SurvivEHR/outputs/patient_outputs/crPreTrain_demo_cpu_ft_t2d_demo/model_artifacts/crPreTrain_demo_cpu_ft_t2d_demo.ckpt', weights_only=False, map_location='cpu')
+model.eval()

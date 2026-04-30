@@ -1,10 +1,41 @@
-from omegaconf import DictConfig, OmegaConf
 import os
+import sys
 import hydra
 import torch
 import pytorch_lightning as pl
 import logging
 from pathlib import Path
+from omegaconf import DictConfig, OmegaConf
+
+
+THIS_FILE = Path(__file__).resolve()
+REPO_ROOT = THIS_FILE.parents[3]
+REPO_PARENT = REPO_ROOT.parent
+if str(REPO_PARENT) not in sys.path:
+    sys.path.insert(0, str(REPO_PARENT))
+
+
+def _add_path_if_missing(path: Path | None):
+    if path is None:
+        return
+    resolved = str(path.resolve())
+    if resolved not in sys.path:
+        sys.path.insert(0, resolved)
+
+
+fast_ehr_root = os.environ.get("FASTEHR_ROOT")
+fast_ehr_candidates = []
+if fast_ehr_root:
+    fast_ehr_candidates.append(Path(fast_ehr_root).resolve())
+fast_ehr_candidates.extend([
+    REPO_PARENT / "FastEHR-main",
+    REPO_PARENT / "FastEHR",
+])
+
+for candidate in fast_ehr_candidates:
+    if (candidate / "FastEHR" / "__init__.py").exists():
+        _add_path_if_missing(candidate.parent)
+        break
 
 from FastEHR.dataloader.foundational_loader import FoundationalDataModule
 from SurvivEHR.examples.modelling.SurvivEHR.setup_causal_experiment import setup_causal_experiment, CausalExperiment
@@ -18,16 +49,33 @@ def run(cfg : DictConfig):
     logging.info(f"Running {cfg.head.SurvLayer} on {os.cpu_count()} CPUs and {torch.cuda.device_count()} GPUs")
 
     # Create logger
-    log_id = cfg.experiment.run_id
-    if cfg.experiment.fine_tune_id is not None:
-        log_id += "_" + cfg.experiment.fine_tune_id
-    logger = pl.loggers.WandbLogger(project=cfg.experiment.project_name, name=log_id, save_dir=cfg.experiment.log_dir, notes=cfg.experiment.notes, tags=cfg.experiment.tags)
+    logger = None
+    if cfg.experiment.log:
+        log_id = cfg.experiment.run_id
+        if cfg.experiment.fine_tune_id is not None:
+            log_id += "_" + cfg.experiment.fine_tune_id
+        logger = pl.loggers.WandbLogger(project=cfg.experiment.project_name,
+                                        name=log_id,
+                                        save_dir=cfg.experiment.log_dir,
+                                        notes=cfg.experiment.notes,
+                                        tags=cfg.experiment.tags)
     logging.basicConfig(level=logging.DEBUG)
     
     # Global settings
     torch.manual_seed(cfg.experiment.seed)
     torch.set_float32_matmul_precision('medium')
     os.environ["HYDRA_FULL_ERROR"] = "1"
+
+    if cfg.data.path_to_db is None or not Path(cfg.data.path_to_db).exists():
+        raise FileNotFoundError(
+            "`data.path_to_db` does not exist. Set it in `examples/modelling/SurvivEHR/confs/default.yaml` "
+            "or override via CLI, e.g. `data.path_to_db=/absolute/path/to/cprd.db`."
+        )
+    if cfg.data.path_to_ds is None or not Path(cfg.data.path_to_ds).exists():
+        raise FileNotFoundError(
+            "`data.path_to_ds` does not exist. Set it in `examples/modelling/SurvivEHR/confs/default.yaml` "
+            "or override via CLI, e.g. `data.path_to_ds=/absolute/path/to/PreTrain`."
+        )
 
     # make dataloader
     supervised = True if (cfg.fine_tuning.fine_tune_outcomes is not None) or (cfg.fine_tuning.custom_outcome_method._target_ is not None) else False    
@@ -241,7 +289,7 @@ def run(cfg : DictConfig):
 
         # Ensure we evaluate on the best/latest version of the model - particularly if we just trained then load the new best checkpoint
         logging.info(f"Re-loading from best cached checkpoint {new_checkpoint}")
-        experiment_instance = Experiment.load_from_checkpoint(new_checkpoint)
+        experiment_instance = Experiment.load_from_checkpoint(new_checkpoint, weights_only=False)
 
     # Test model
     if cfg.experiment.test:

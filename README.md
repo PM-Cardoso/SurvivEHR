@@ -14,64 +14,95 @@ SurvivEHR is a generative transformer-based foundation model trained on over 7.6
 
 # Installation and Setup Instructions
 
-To use this code, please ensure you have a suitable Python environment prepared (tested on Python 3.10.4). We recommend using a virtual environment, or the apptainer below. Follow these steps to install SurvivEHR and its dependencies:
+The repository now supports a local macOS workflow using a standard `venv` and a sibling `FastEHR-main` checkout.
 
+## Recommended local setup (macOS + `venv`)
 
-## Clone repository
+SurvivEHR currently works best with Python `3.10` or `3.11`. If you already created `.venv` with Python `3.14`, recreate it with Python `3.11` before installing dependencies.
 
-First, clone the SurvivEHR repository:
+### Expected workspace layout
 
-```bash
-git clone https://github.com/cwlgadd/SurvivEHR.git
-mv SurvivEHR CPRD 
-cd CPRD
+```text
+Deep-learning_EHR/
+├── SurvivEHR/
+└── FastEHR-main/
 ```
 
-## Option 1: Create a virtual environment
+### One-command setup
 
-Requirements for this project can be found in `requirements.txt`. 
-
-Setting up the virtual environment can be done in many ways. For example, this can be done using ![Astral's UV packaging tools](https://docs.astral.sh/uv/):
+From the `SurvivEHR` repository root:
 
 ```bash
-VENV_DIR="/path/to/virtual_envs"
-VENV_PATH="$VENV_DIR/SurvivEHR-3.10.4"              # SurvivEHR's virtual environment will be created here
-mkdir -p "$VENV_DIR"
-
-uv python install 3.10.4
-uv venv --python 3.10.4 "$VENV_PATH"
-source "$VENV_PATH/bin/activate"
+PYTHON_BIN="$(command -v python3.11)" ./scripts/setup_local_env.sh
 ```
 
-Optionally, choose to
+If `python3.11` is not on your `PATH`, set `PYTHON_BIN` explicitly to a compatible interpreter.
+
+### Manual setup
 
 ```bash
-# Create a symlink to the external env to help editors that expect to find .venv
-ln -sfn "$VENV_PATH" .venv      
-
-# Tell UV to cache in another directory (for example if personal directory has limited space)
-export UV_CACHE_DIR="/path/to/virtal_envs/scratch/directory/uv-cache"
-mkdir -p "$UV_CACHE_DIR"
-uv cache dir
-
-# Give more time for UV to build from default
-export UV_HTTP_TIMEOUT=180
-
+cd "/Users/p.cardoso/Library/CloudStorage/OneDrive-UniversityofExeter/Documents/Data Analysis/Deep-learning_EHR/SurvivEHR"
+rm -rf .venv
+/Users/p.cardoso/.pyenv/versions/3.11.9/bin/python -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip "setuptools<81" wheel
+python -m pip install -r requirements.txt
+cd ../FastEHR-main
+python -m pip install -r requirements-py311.txt
+python -m pip install -e .
+cd ../SurvivEHR
 ```
 
-You can then build the venv using the provided, generated, requirements.lock file
+`FastEHR-main/requirements-py311.txt` contains `-e .`, so it must be installed while your shell is inside the `FastEHR-main` directory.
+
+## Runtime configuration
+
+The default config file is now `examples/modelling/SurvivEHR/confs/default.yaml`. It reads dataset paths from environment variables, which keeps the repo portable across machines.
+
+Set these before running experiments:
 
 ```bash
-uv pip sync /path/to/project/root/requirements.lock
+export FASTEHR_ROOT="/Users/p.cardoso/Library/CloudStorage/OneDrive-UniversityofExeter/Documents/Data Analysis/Deep-learning_EHR/FastEHR-main"
+export SURVIVEHR_DB_PATH="/absolute/path/to/cprd.db"
+export SURVIVEHR_DS_PATH="/absolute/path/to/pretrain_dataset"
+export SURVIVEHR_META_PATH="/absolute/path/to/meta_information.pickle"
 ```
 
-To activate the environment use
+`SURVIVEHR_META_PATH` is optional unless your dataset requires a custom metadata file.
+
+## Smoke tests
+
+After installation, verify imports:
 
 ```bash
-source ${VENV_PATH}/bin/activate
+source .venv/bin/activate
+python -c "import FastEHR, torch, pytorch_lightning, transformers; print('imports ok')"
+python -c "from examples.modelling.SurvivEHR.run_experiment import run; print('entrypoint ok')"
 ```
 
-Note, this creates a new version of python which can lead to conflicts if
+To inspect the resolved Hydra config without starting training:
+
+```bash
+source .venv/bin/activate
+python examples/modelling/SurvivEHR/run_experiment.py --cfg job
+```
+
+To run a real experiment, provide valid dataset paths and optionally reduce worker count and batch size for a laptop:
+
+```bash
+source .venv/bin/activate
+export FASTEHR_ROOT="/Users/p.cardoso/Library/CloudStorage/OneDrive-UniversityofExeter/Documents/Data Analysis/Deep-learning_EHR/FastEHR-main"
+export SURVIVEHR_DB_PATH="/absolute/path/to/cprd.db"
+export SURVIVEHR_DS_PATH="/absolute/path/to/pretrain_dataset"
+python examples/modelling/SurvivEHR/run_experiment.py data.min_workers=0 data.batch_size=4
+```
+
+## Laptop notes
+
+- On Apple Silicon, CPU-only PyTorch installs cleanly with the current dependency set.
+- `wandb` logging is disabled by default in `examples/modelling/SurvivEHR/confs/default.yaml` for local runs.
+- The experiment entrypoint now auto-detects a sibling `FastEHR-main` checkout, so `FASTEHR_ROOT` is optional when your folder layout matches the example above.
+- If you see `data.path_to_db does not exist` or `data.path_to_ds does not exist`, export the dataset paths above or override them on the command line.
 
 ## Option 2: Create and run in an apptainer
 
@@ -95,15 +126,7 @@ bash containers/run_in_container.sh python -V
 
 ## Install FastEHR (Data Pipeline)
 
-Whilst custom data pipelines can be used, we recommend using FastEHR. SurvivEHR uses the FastEHR library for EHR data preprocessing (providing tools for data pre-processing, loading, dataset construction, etc.). FastEHR is a high-performance pipeline for transforming raw EHR events into ML-ready format. 
-
-Clone and add to your python path
-
-```bash
-git clone https://github.com/cwlgadd/FastEHR.git
-```
-
-FastEHR shares the same dependencies as SurvivEHR.
+Whilst custom data pipelines can be used, we recommend using FastEHR. SurvivEHR uses the FastEHR library for EHR data preprocessing (providing tools for data pre-processing, loading, dataset construction, etc.). In this workspace, a local checkout already exists at `../FastEHR-main`, and the experiment runner can use that location automatically.
 
 # Examples Directory Overview
 

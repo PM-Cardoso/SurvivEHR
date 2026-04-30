@@ -7,12 +7,16 @@ import umap
 import wandb
 import matplotlib.pyplot as plt
 from pycox.evaluation import EvalSurv
-from scipy.integrate import trapz
 import pandas as pd
 import seaborn as sns
 import logging
 import copy
 import traceback
+
+try:
+    from scipy.integrate import trapz
+except ImportError:
+    from numpy import trapz
 
 from SurvivEHR.src.models.base_callback import BaseCallback
 
@@ -111,7 +115,7 @@ class RestrictedMeanSurvivalTime(Callback):
                 
             self.log_dict(metric_dict)
     
-        except:
+        except Exception as e:
             if not suppress_warnings:
                 logging.warning(f"Failed to calculate Restricted Mean Survival Time: {e}")
                 logging.debug(traceback.format_exc())
@@ -159,7 +163,7 @@ class RestrictedMeanSurvivalTime(Callback):
                 
             self.log_dict(metric_dict)
     
-        except:
+        except Exception as e:
             if not suppress_warnings:
                 logging.warning(f"Failed to calculate Observed Survival Time: {e}")
                 logging.debug(traceback.format_exc())

@@ -1,6 +1,7 @@
 import pytorch_lightning as pl
 import torch
 import logging
+import os
 from torch.optim.lr_scheduler import CosineAnnealingWarmRestarts, ReduceLROnPlateau, CosineAnnealingLR, LambdaLR, SequentialLR, ChainedScheduler
 import importlib
 import functools
@@ -216,7 +217,11 @@ def setup_fewshot_experiment(cfg, dm, vocab_size, checkpoint=None, logger=None, 
     if checkpoint is not None:
         logging.info("Loading from checkpoint")
         use_adapter = cfg.transformer.use_fine_tune_adapter
-        fewshot_experiment = FewShotExperiment.load_from_checkpoint(checkpoint, cfg=cfg, use_adapter=use_adapter, strict=not use_adapter)
+        fewshot_experiment = FewShotExperiment.load_from_checkpoint(checkpoint,
+                                                                    cfg=cfg,
+                                                                    use_adapter=use_adapter,
+                                                                    strict=not use_adapter,
+                                                                    weights_only=False)
         if cfg.experiment.train:
             fewshot_experiment._reinit_weights()                        # Re-initialise the survival head weights
     else:
@@ -322,16 +327,26 @@ def setup_fewshot_experiment(cfg, dm, vocab_size, checkpoint=None, logger=None, 
     ######################
     # Set up the Trainer #
     ######################
+    use_gpu_env = str(os.environ.get("SURVIVEHR_USE_GPU", "0")).strip().lower() in {"1", "true", "yes", "y"}
+    use_gpu = torch.cuda.is_available() and use_gpu_env
+
+    trainer_kwargs = {
+        "logger": logger,
+        "callbacks": callbacks,
+        "max_epochs": cfg.optim.num_epochs,
+        "log_every_n_steps": cfg.optim.log_every_n_steps,
+        "val_check_interval": cfg.optim.val_check_interval,
+        "limit_val_batches": cfg.optim.limit_val_batches,
+        "limit_test_batches": cfg.optim.limit_test_batches,
+        "accumulate_grad_batches": cfg.optim.accumulate_grad_batches,
+        # "gradient_clip_val":0.5
+    }
+    if not use_gpu:
+        trainer_kwargs["accelerator"] = "cpu"
+        trainer_kwargs["devices"] = 1
+
     _trainer = pl.Trainer(
-        logger=logger,
-        callbacks=callbacks,
-        max_epochs=cfg.optim.num_epochs,
-        log_every_n_steps=cfg.optim.log_every_n_steps,
-        val_check_interval=cfg.optim.val_check_interval,
-        limit_val_batches=cfg.optim.limit_val_batches,
-        limit_test_batches=cfg.optim.limit_test_batches,
-        accumulate_grad_batches=cfg.optim.accumulate_grad_batches,
-        # gradient_clip_val=0.5
+        **trainer_kwargs
     )
 
     return fewshot_experiment, FewShotExperiment, _trainer

@@ -1,4 +1,5 @@
 import logging
+import os
 import pytorch_lightning as pl
 import torch
 from omegaconf import OmegaConf
@@ -397,12 +398,21 @@ def setup_finetune_experiment(cfg, dm, mode, risk_model, checkpoint=None, logger
         case "load_from_finetune":
             assert checkpoint is not None
             logging.info(f"Loading fine-tuned checkpoint from {checkpoint}")
-            finetune_experiment = FineTuneExperiment.load_from_checkpoint(checkpoint, cfg=cfg, outcome_tokens=outcome_tokens, risk_model=risk_model)
+            finetune_experiment = FineTuneExperiment.load_from_checkpoint(checkpoint,
+                                                                          cfg=cfg,
+                                                                          outcome_tokens=outcome_tokens,
+                                                                          risk_model=risk_model,
+                                                                          weights_only=False)
             
         case "load_from_pretrain":
             assert checkpoint is not None
             logging.info(f"Loading pre-trained model from checkpoint from {checkpoint}.")
-            finetune_experiment = FineTuneExperiment.load_from_checkpoint(checkpoint, cfg=cfg, outcome_tokens=outcome_tokens, risk_model=risk_model, strict=False)
+            finetune_experiment = FineTuneExperiment.load_from_checkpoint(checkpoint,
+                                                                          cfg=cfg,
+                                                                          outcome_tokens=outcome_tokens,
+                                                                          risk_model=risk_model,
+                                                                          strict=False,
+                                                                          weights_only=False)
         case "no_load":
             assert cfg.fine_tuning.PEFT.method is None, "If fine-tuning from scratch do not use any PEFT such as the adapter module."
             logging.info(f"Fine-tuning from scratch")
@@ -533,26 +543,34 @@ def setup_finetune_experiment(cfg, dm, mode, risk_model, checkpoint=None, logger
     ######################
     # Set up the Trainer #
     ######################
-    if  torch.cuda.is_available():
-        if torch.cuda.is_bf16_supported():
-            precision = "bf16-mixed"
-        else:
-            precision = "16-mixed"
+    use_gpu_env = str(os.environ.get("SURVIVEHR_USE_GPU", "0")).strip().lower() in {"1", "true", "yes", "y"}
+    use_gpu = torch.cuda.is_available() and use_gpu_env
+    if use_gpu and torch.cuda.is_bf16_supported():
+        precision = "bf16-mixed"
+    elif use_gpu:
+        precision = "16-mixed"
     else:
         precision = 32
+
+    trainer_kwargs = {
+        "logger": logger,
+        # "precision": precision,
+        "callbacks": callbacks,
+        "max_epochs": cfg.optim.num_epochs,
+        "log_every_n_steps": cfg.optim.log_every_n_steps,
+        "val_check_interval": cfg.optim.val_check_interval,
+        "limit_val_batches": cfg.optim.limit_val_batches,
+        "limit_test_batches": cfg.optim.limit_test_batches,
+        "accumulate_grad_batches": cfg.optim.accumulate_grad_batches,
+        # "gradient_clip_val":1.0,
+        # "gradient_clip_algorithm":"norm",
+    }
+    if not use_gpu:
+        trainer_kwargs["accelerator"] = "cpu"
+        trainer_kwargs["devices"] = 1
         
     _trainer = pl.Trainer(
-        logger=logger,
-        # precision=precision,
-        callbacks=callbacks,
-        max_epochs=cfg.optim.num_epochs,
-        log_every_n_steps=cfg.optim.log_every_n_steps,
-        val_check_interval=cfg.optim.val_check_interval,
-        limit_val_batches=cfg.optim.limit_val_batches,
-        limit_test_batches=cfg.optim.limit_test_batches,
-        accumulate_grad_batches=cfg.optim.accumulate_grad_batches,
-        # gradient_clip_val=1.0,
-        # gradient_clip_algorithm="norm",
+        **trainer_kwargs
     )
 
     return finetune_experiment, FineTuneExperiment, _trainer

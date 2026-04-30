@@ -1,5 +1,6 @@
 import logging
 import math
+import os
 import numpy as np
 import pytorch_lightning as pl
 import torch
@@ -214,7 +215,8 @@ def setup_causal_experiment(cfg, dm, vocab_size, checkpoint=None, logger=None):
         The configured PyTorch Lightning trainer with callbacks.
     """
     
-    USE_GPU = torch.cuda.is_available()
+    use_gpu_env = str(os.environ.get("SURVIVEHR_USE_GPU", "0")).strip().lower() in {"1", "true", "yes", "y"}
+    USE_GPU = torch.cuda.is_available() and use_gpu_env
 
     #########################################################
     # Load existing pre-trained model,                      #
@@ -224,7 +226,8 @@ def setup_causal_experiment(cfg, dm, vocab_size, checkpoint=None, logger=None):
         causal_experiment = CausalExperiment(cfg=cfg, vocab_size=vocab_size)
     else:
         causal_experiment = CausalExperiment.load_from_checkpoint(checkpoint,
-                                                                  cfg=cfg, 
+                                                                  cfg=cfg,
+                                                                  weights_only=False,
                                                                   )
     # if torch.cuda.is_available():
     #     causal_experiment = torch.compile(causal_experiment)
@@ -336,18 +339,25 @@ def setup_causal_experiment(cfg, dm, vocab_size, checkpoint=None, logger=None):
         logging.info(f"cpu job")
     logging.info(f"Using {strategy} strategy")
         
+    trainer_kwargs = {
+        "logger": logger,
+        # "precision": "bf16-mixed" if torch.cuda.is_bf16_supported() else "16-mixed",
+        "strategy": strategy,
+        "callbacks": callbacks,
+        "max_epochs": cfg.optim.num_epochs,
+        "log_every_n_steps": cfg.optim.log_every_n_steps,
+        "val_check_interval": cfg.optim.val_check_interval,
+        "limit_val_batches": cfg.optim.limit_val_batches,
+        "limit_test_batches": cfg.optim.limit_test_batches,
+        # "accumulate_grad_batches": cfg.optim.accumulate_grad_batches,
+        # "gradient_clip_val":1.0
+    }
+    if not USE_GPU:
+        trainer_kwargs["accelerator"] = "cpu"
+        trainer_kwargs["devices"] = 1
+
     _trainer = pl.Trainer(
-        logger=logger,
-        # precision="bf16-mixed" if torch.cuda.is_bf16_supported() else "16-mixed",
-        strategy=strategy,
-        callbacks=callbacks,
-        max_epochs=cfg.optim.num_epochs,
-        log_every_n_steps=cfg.optim.log_every_n_steps,
-        val_check_interval=cfg.optim.val_check_interval,
-        limit_val_batches=cfg.optim.limit_val_batches,
-        limit_test_batches=cfg.optim.limit_test_batches,
-        # accumulate_grad_batches=cfg.optim.accumulate_grad_batches,
-        # gradient_clip_val=1.0
+        **trainer_kwargs
     )
 
     return causal_experiment, CausalExperiment, _trainer
@@ -387,13 +397,21 @@ class CosineAnnealingWarmRestartsDecay(CosineAnnealingWarmRestarts):
                  last_epoch=-1, 
                  verbose=False, 
                  decay=1):
-        
-        super().__init__(optimizer,
-                         T_0, 
-                         T_mult=T_mult,
-                         eta_min=eta_min, 
-                         last_epoch=last_epoch, 
-                         verbose=verbose)
+
+        try:
+            super().__init__(optimizer,
+                             T_0,
+                             T_mult=T_mult,
+                             eta_min=eta_min,
+                             last_epoch=last_epoch,
+                             verbose=verbose)
+        except TypeError:
+            super().__init__(optimizer,
+                             T_0,
+                             T_mult=T_mult,
+                             eta_min=eta_min,
+                             last_epoch=last_epoch)
+            self.verbose = verbose
         
         self.decay = decay
         self.initial_lrs = self.base_lrs

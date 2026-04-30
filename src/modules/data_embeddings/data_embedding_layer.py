@@ -23,8 +23,7 @@ class DataEmbeddingLayer(torch.nn.Module):
         self.vocab_size = vocab_size
         self.embed_dim = embed_dim
 
-        # 
-        self.static_proj = nn.Linear(16, self.embed_dim)
+        self.static_proj = nn.LazyLinear(self.embed_dim)
 
         
         # self.dynamic_embedding_layer = JointDynamicEmbeddingLayer(vocab_size=vocab_size,

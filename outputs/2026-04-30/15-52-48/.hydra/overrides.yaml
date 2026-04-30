@@ -1,0 +1,9 @@
+- experiment.run_id=crPreTrain_demo
+- data.batch_size=4
+- data.min_workers=0
+- optim.num_epochs=1
+- optim.val_check_interval=1
+- optim.limit_val_batches=1.0
+- optim.limit_test_batches=1.0
+- fine_tuning.use_callbacks.hidden_embedding.num_batches=0
+- fine_tuning.use_callbacks.performance_metrics=false

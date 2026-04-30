@@ -90,12 +90,20 @@ class CosineAnnealingWarmRestartsDecay(CosineAnnealingWarmRestarts):
                  verbose=False, 
                  decay=1):
         
-        super().__init__(optimizer,
-                         T_0, 
-                         T_mult=T_mult,
-                         eta_min=eta_min, 
-                         last_epoch=last_epoch, 
-                         verbose=verbose)
+        try:
+            super().__init__(optimizer,
+                             T_0, 
+                             T_mult=T_mult,
+                             eta_min=eta_min, 
+                             last_epoch=last_epoch, 
+                             verbose=verbose)
+        except TypeError:
+            super().__init__(optimizer,
+                             T_0, 
+                             T_mult=T_mult,
+                             eta_min=eta_min, 
+                             last_epoch=last_epoch)
+            self.verbose = verbose
         
         self.decay = decay
         self.initial_lrs = self.base_lrs

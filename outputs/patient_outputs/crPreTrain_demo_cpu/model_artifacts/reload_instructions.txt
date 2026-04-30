@@ -1,0 +1,3 @@
+from SurvivEHR.examples.modelling.SurvivEHR.setup_causal_experiment import CausalExperiment
+model = CausalExperiment.load_from_checkpoint('/Users/p.cardoso/Library/CloudStorage/OneDrive-UniversityofExeter/Documents/Data Analysis/Deep-learning_EHR/SurvivEHR/outputs/patient_outputs/crPreTrain_demo_cpu/model_artifacts/crPreTrain_demo_cpu.ckpt', weights_only=False, map_location='cpu')
+model.eval()

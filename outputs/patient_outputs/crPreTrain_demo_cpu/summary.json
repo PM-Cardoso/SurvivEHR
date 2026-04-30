@@ -1,0 +1,10 @@
+{
+  "checkpoint": "/Users/p.cardoso/Library/CloudStorage/OneDrive-UniversityofExeter/Documents/Data Analysis/Deep-learning_EHR/SurvivEHR/outputs/checkpoints/crPreTrain_demo_cpu.ckpt",
+  "rows_exported": 99,
+  "splits": [
+    "test",
+    "train",
+    "val"
+  ],
+  "output_dir": "/Users/p.cardoso/Library/CloudStorage/OneDrive-UniversityofExeter/Documents/Data Analysis/Deep-learning_EHR/SurvivEHR/outputs/patient_outputs/crPreTrain_demo_cpu"
+}
